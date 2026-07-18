@@ -1,0 +1,72 @@
+{
+  "name": "@zakkster/lite-store",
+  "version": "1.1.0",
+  "author": "Zahary Shinikchiev <shinikchiev@yahoo.com>",
+  "description": "Fine-grained reactivity for objects and arrays, built on @zakkster/lite-signal. Direct mutation via Proxy; lazy per-key signals (allocated only on first tracked read); proxy identity preserved across reads; safe disposal walk with cycle protection. Four exports: store, unwrap, snapshot, dispose.",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./Store.js",
+  "module": "./Store.js",
+  "types": "./Store.d.ts",
+  "exports": {
+    ".": {
+      "node": "./Store.js",
+      "types": "./Store.d.ts",
+      "import": "./Store.js",
+      "default": "./Store.js"
+    }
+  },
+  "files": [
+    "Store.js",
+    "Store.d.ts",
+    "CHANGELOG.md",
+    "README.md",
+    "llms.txt",
+    "LICENSE.txt"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "test:watch": "node --test --watch test/*.test.js",
+    "bench": "node bench/bench.js",
+    "test:torture": "node bench/torture/reconcile-fuzzer.mjs"
+  },
+  "keywords": [
+    "store",
+    "state",
+    "reactive",
+    "signals",
+    "proxy",
+    "fine-grained",
+    "mutation",
+    "immutable-alternative",
+    "zero-gc",
+    "lite-signal",
+    "object",
+    "array",
+    "nested-state",
+    "reconcile"
+  ],
+  "peerDependencies": {
+    "@zakkster/lite-signal": "^1.1.3"
+  },
+  "devDependencies": {
+    "@zakkster/lite-signal": "^1.4.0"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/PeshoVurtoleta/lite-store#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PeshoVurtoleta/lite-store.git"
+  },
+  "bugs": {
+    "url": "https://github.com/PeshoVurtoleta/lite-store/issues",
+    "email": "shinikchiev@yahoo.com"
+  },
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/PeshoVurtoleta"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

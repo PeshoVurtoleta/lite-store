@@ -1,0 +1,178 @@
+# @zakkster/lite-store
+
+> Fine-grained reactivity for objects and arrays, built on @zakkster/lite-signal. Wrap a plain
+> object or array in store(...), mutate it directly, and only the effects/computeds reading the
+> specific touched path re-fire. Lazy per-key signals — a property only becomes reactive once
+> read inside an effect/computed/watch. Proxy identity preserved across reads. Cycle-safe
+> subtree disposal on overwrite. Opaque-by-default for Date/Map/Set/class instances.
+> ESM-only. Peer dep @zakkster/lite-signal ^1.1.3. MIT. Author: Zahary Shinikchiev.
+
+## Install
+npm i @zakkster/lite-store @zakkster/lite-signal
+
+## Import
+import { store, unwrap, snapshot, dispose, reconcile } from '@zakkster/lite-store';
+
+## API
+store<T extends object>(initial: T): T
+  - Wraps a plain object or array. Returns a Proxy typed as T.
+  - Throws TypeError if initial is not a plain object or array.
+  - Reads inside reactive contexts track per-key. Writes fire matching signals.
+  - Idempotent: store(alreadyAStore) returns it (never a proxy-of-a-proxy).
+  - Frozen subtrees are returned as-is and carry no reactivity (the proxy get
+    invariant forbids handing back a child proxy for a frozen own property).
+    They cannot change; non-frozen siblings are unaffected.
+
+unwrap<T>(s: T): T
+  - Returns the underlying target. NOT tracked, even inside reactive contexts.
+  - Non-stores pass through unchanged.
+
+snapshot<T>(s: T): T
+  - Returns a deep plain-data copy (recursive unwrap + clone).
+  - Non-plain prototypes (Date/Map/Set/class instances) copied by reference.
+  - Cycle-safe: self/mutual/diamond references resolve to the clone, preserving
+    the original's sharing topology instead of expanding it into a tree.
+
+dispose(s: object): void
+  - Releases every signal in the store's subtree to lite-signal's pool.
+  - After dispose: writes are silent; new effects can re-subscribe (zombie reactivation).
+
+reconcile<T extends object>(s: T, next: T, opts?: { key?: string | ((item)=>unknown) }): T   [1.1]
+  - Structural diff-apply: patch s in place to deep-equal next, mutating ONLY changed leaves.
+  - Replaces the footgun `s.x = fresh` (which disposes every signal under s.x and re-fires all).
+  - Objects: patch present keys (recurse into same-shape nested containers), delete absent keys.
+  - Arrays: positional by default (index i patched vs next[i]; row target + signals preserved).
+    opts.key ("id" or item=>key) matches rows by identity across reorder/insert/remove — a moved
+    row keeps its subtree, only its index signal fires. Key applies to every array in the walk.
+  - Runs untracked (never subscribes) + batched (no torn snapshot). Returns s.
+  - GATE: replace 1000 rows where 3 changed -> 3 effects fire, signal pool flat (0 alloc/0 dispose).
+  - Throws TypeError if s is not a store, next is not plain, or shapes mismatch (object vs array).
+  - NOT produce / NOT rollback: no draft, no throw-to-discard; a mid-walk throw leaves partial writes.
+  - Untrusted input by construction (server refetch): __proto__ keys are skipped in both
+    directions, so a JSON.parse'd hostile payload never reaches Object.prototype.
+  - Duplicate keys keep slots disjoint: each existing row is claimed by at most one incoming
+    row, so two slots are never backed by one target.
+
+## Reactivity model
+- Each plain object/array proxied gets a meta: { target, sigs: Map<key, signal>, kids: Map<key, meta>,
+  hasSigs: Map<key, signal>|undefined (existence lane, lazy), ops: Map<name, fn>|undefined (cached
+  array-method wrappers, lazy), frozen: boolean }.
+- Proxy cache via WeakMap: target → proxy. Same target → same proxy (stable identity).
+- Read trap: checks isTracking() (from lite-signal 1.1.3). If true, allocate signal for key
+  if absent, then read it (subscribes). If false, plain property access — zero allocations.
+- Set trap: write target. Fire key's signal if exists (BEFORE dispose). Dispose old value's
+  subtree if it was a proxied object (and not us — cycle protection).
+- Delete trap: same as set with undefined.
+- Has trap: tracks TWO lanes -- the value lane (like a read) and an existence lane, so
+  adding a key valued undefined, or deleting a key that held undefined, still re-fires
+  (Object.is(undefined, undefined) makes the value lane blind to both). The two are
+  coalesced into one propagation, so a mutation flipping existence AND value re-runs an
+  `in` consumer exactly once. The existence lane is allocated lazily on first tracked `in`.
+- Array shrink paths (pop/shift/splice/fill/copyWithin/length=n) dispose the signal
+  subtrees of the rows they shed, so churn returns its nodes to the pool.
+- Array method wrappers are cached per node: s.push === s.push, no closure per access.
+- Array length assignment is ToUint32 with round-trip validation (length = 4.5 and -1
+  throw RangeError; 2**32-1 is legal).
+
+## Direct mutation
+- s.a = x          ← fires "a"'s signal if tracked
+- s.a = s.a        ← NO-OP (Object.is short-circuit; does NOT dispose s.a's subtree)
+- s.user.name = x  ← two proxy hops; fires (user-meta, "name")
+- s.items[3] = x   ← fires "3" on items meta
+- s.items[100] = x ← fires "100" + "length" (sparse-index extends length implicitly)
+- s.items.length = N  ← truncation fires removed indices' signals + length
+- s.items.push(x)  ← fires "length" + any tracked tail indices (under batch)
+- delete s.a       ← fires "a" with undefined
+- s.a = newObject  ← fires "a"; disposes old "a"'s subtree if it was proxied
+
+## Batching
+- No `produce()` export. Use lite-signal's batch(fn) for coalescing:
+  batch(() => { s.a = 1; s.b = 2; s.c = 3 })   // effects fire once at end
+- No transactional rollback in v1. Errors leave store in partially-applied state.
+  A future transaction(s, fn) may ship with snapshot+restore-on-throw cost upfront.
+
+## Arrays
+- Mutating methods intercepted and wrapped in batch: push, pop, shift, unshift, splice,
+  reverse, sort, fill, copyWithin.
+- Each iterates parent's sigs map (already sparse via lazy alloc) → O(tracked indices), not
+  O(array length). Fires "length" always + relevant integer-keyed signals.
+- splice fires only integer keys >= start. shift/unshift/reverse/sort fire all integer keys.
+- Direct index assignment (s.items[3] = x) fires the indexed signal.
+
+## Identity
+- s.x === s.x ALWAYS (within tick, across ticks, across unrelated mutations).
+- Same underlying target → same Proxy (WeakMap-cached).
+- Overwriting s.x with a new target produces a new proxy.
+
+## Disposal & cycles
+- Set trap detects old value was proxied → disposeSubtree(oldMeta, initiator).
+- Walk uses Set<meta>: cycle termination + initiator-skip (pre-seeds the set with the meta
+  whose set trap is running, so cyclic back-references don't wipe live signals).
+- Pure orphan cycles (no external reachability) LEAK — pure refcount can't collect them.
+  Call dispose(s) explicitly at scope boundaries.
+
+## Lazy allocation (the headline performance property)
+- Property has NO signal node until first read inside a reactive observer.
+- Plain reads outside any effect/computed/watch allocate zero signals.
+- Verifiable via lite-signal's stats() counter:
+    const before = stats().signals
+    for (let i=0; i<1000; i++) s.a; s.b; s.c
+    stats().signals === before  // true
+
+## Opaque-by-default boundaries
+- Date, Map, Set, RegExp, Promise, class instances → passed through as references, not wrapped.
+- Mutating them internally (set.add, map.set, date.setHours) does NOT fire signals.
+- Replacing the slot (s.tags = new Set(...)) DOES fire the parent's signal.
+- Future @zakkster/lite-collections will ship ReactiveMap / ReactiveSet (opt-in).
+
+## Zombie proxy (documented behavior)
+- Hold ref before overwrite: const r = s.a; s.a = newObj
+- r still functional as a Proxy to the original target. Reads work, writes work.
+- Original effects subscribed to r's signals are SEVERED (signals disposed).
+- New effects subscribing to r work normally — re-allocate signals on the (orphan) meta.
+
+## Composition with lite-signal
+- effect(() => /* read s paths */) — subscribes at touched paths
+- computed(() => /* derive from s */) — recomputes on dep change, memoized
+- watch / watchOnce / watchUntil from lite-watch-ex — same pattern
+- batch(fn) — coalesce multiple s.* writes into one effect fan-out
+- untrack(() => s.x) — read without subscribing
+
+## Gotchas / limits
+- No produce()/transaction in v1. Errors don't roll back. Use try/catch + manual restore.
+- Orphan cycles leak (no external ref + cyclic). Call dispose(s) explicitly.
+- Reactive Map/Set out of scope (use lite-collections when shipped).
+- Multi-parent: a value reachable through two paths shares one proxy/meta. Overwriting one
+  path will dispose; the other path becomes a zombie. Contract: "one canonical parent per
+  proxied object."
+- ownKeys / has traps: has() tracks (for `in` checks); ownKeys does not (Object.keys is
+  not reactive to key additions). Use computed(() => Object.keys(s.foo)) reads as needed.
+
+## Testing
+npm test → 75 deterministic tests covering:
+- Construction, identity, reactivity basics
+- Lazy allocation (proven via stats())
+- Cycle adversarial: cycle + overwrite without stack overflow or sibling damage; 3-node cycle
+- Computed integration: memoization, dynamic deps, error caching with recovery
+- All 9 array mutations + arr.length= truncation + sparse-index implicit length
+- Array iteration inside effects: for-of, forEach, map, find, spread
+- Object iteration: JSON.stringify, spread {...s}, Object.values, 'key' in s
+- Multi-store independence + effects composing two stores
+- Self-assignment no-op (s.a = s.a doesn't dispose s.a's subtree)
+- Dispose semantics: sibling safety, 500-child cascade, idempotent, during-batch
+- Zombie proxy documented behavior (old effects detached, new effects can re-subscribe)
+- Shared subtree (s.a = s.b shares the meta)
+- Opaque boundaries (Date/Map/Set/class instances)
+- Error handling: effect throws don't break siblings; computed errors cached and recoverable
+- Utilities (unwrap, snapshot, batch coalescing)
+
+## Ecosystem
+- @zakkster/lite-signal ^1.1.3 — reactive core (peer dep; isTracking() added in 1.1.3)
+- @zakkster/lite-watch-ex — watchOnce/watchUntil/watchEffect
+- @zakkster/lite-raf — frame scheduler
+- @zakkster/lite-resource — async state as signal
+- @zakkster/lite-channel — cross-tab signal sync
+- @zakkster/lite-persist — persist signals
+- @zakkster/lite-router — URL as signal
+- @zakkster/lite-scene — reactive Canvas2D scene graph
+- @zakkster/lite-store — this package

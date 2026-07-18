@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>@zakkster/lite-store · reactive grid</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700&family=JetBrains+Mono:wght@400;700&display=swap"
+          rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #060912;
+            color: #d9e6e8;
+            font-family: 'Outfit', system-ui, sans-serif;
+        }
+
+        body {
+            display: flex;
+        }
+
+        /* ── sidebar ───────────────────────────────────────────────────────── */
+        .sidebar {
+            width: 320px;
+            padding: 28px 24px;
+            border-right: 1px solid rgba(63, 208, 191, 0.12);
+            background: rgba(8, 12, 20, 0.6);
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+            overflow-y: auto;
+        }
+
+        .sidebar h1 {
+            font-weight: 700;
+            font-size: 22px;
+            letter-spacing: -0.02em;
+            color: #3fd0bf;
+        }
+
+        .sidebar .tag {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: #6c8088;
+            margin-top: 4px;
+            letter-spacing: 0.04em;
+        }
+
+        .stats {
+            background: rgba(12, 18, 28, 0.6);
+            border: 1px solid rgba(63, 208, 191, 0.14);
+            border-radius: 8px;
+            padding: 14px 16px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11.5px;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 3px 0;
+            color: #8aa0a8;
+        }
+
+        .stat-row .v {
+            color: #3fd0bf;
+            font-weight: 700;
+        }
+
+        .stat-row.muted .v {
+            color: #6c8088;
+            font-weight: 400;
+        }
+
+        .stat-row.highlight .v {
+            color: #ffb454;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .control-group .label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: #4d5f66;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            margin-bottom: 2px;
+        }
+
+        button {
+            background: rgba(12, 18, 28, 0.7);
+            color: #d9e6e8;
+            border: 1px solid rgba(63, 208, 191, 0.22);
+            border-radius: 6px;
+            padding: 10px 14px;
+            font-family: 'Outfit', sans-serif;
+            font-size: 13px;
+            font-weight: 500;
+            letter-spacing: 0.02em;
+            cursor: pointer;
+            text-align: left;
+            transition: background 0.12s, border-color 0.12s, color 0.12s;
+        }
+
+        button:hover {
+            background: rgba(63, 208, 191, 0.1);
+            border-color: rgba(63, 208, 191, 0.5);
+            color: #3fd0bf;
+        }
+
+        button:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        button.active {
+            background: rgba(63, 208, 191, 0.18);
+            border-color: rgba(63, 208, 191, 0.6);
+            color: #3fd0bf;
+        }
+
+        .note {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10.5px;
+            color: #4d5f66;
+            line-height: 1.6;
+            border-top: 1px solid rgba(63, 208, 191, 0.08);
+            padding-top: 14px;
+        }
+
+        .note .hl {
+            color: #3fd0bf;
+        }
+
+        /* ── grid pane ─────────────────────────────────────────────────────── */
+        .grid-pane {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 32px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(30, 1fr);
+            grid-template-rows: repeat(20, 1fr);
+            gap: 2px;
+            width: 100%;
+            max-width: calc(100vh * 1.5);
+            aspect-ratio: 30 / 20;
+        }
+
+        .cell {
+            border-radius: 2px;
+            background-color: hsl(var(--h, 0), 65%, 52%);
+            transition: background-color 0.4s ease-out;
+        }
+
+        .cell.unbound {
+            background: #11161e !important;
+            transition: none;
+        }
+    </style>
+    <script type="importmap">
+{
+    "imports": {
+        "@zakkster/lite-signal": "https://cdn.jsdelivr.net/npm/@zakkster/lite-signal@1.1.3/+esm",
+        "@zakkster/lite-store":  "../Store.js"
+    }
+}
+
+    </script>
+</head>
+<body>
+<aside class="sidebar">
+    <div>
+        <h1>@zakkster/lite-store</h1>
+        <div class="tag">fine-grained reactive proxy · 600-cell grid</div>
+    </div>
+
+    <div class="stats">
+        <div class="stat-row"><span>store cells</span><span class="v" id="s-cells">600</span></div>
+        <div class="stat-row"><span>signals (lite-signal)</span><span class="v" id="s-signals">—</span></div>
+        <div class="stat-row"><span>effects (lite-signal)</span><span class="v" id="s-effects">—</span></div>
+        <div class="stat-row highlight"><span>effects last mutation</span><span class="v" id="s-last-runs">0</span>
+        </div>
+        <div class="stat-row muted"><span>last action</span><span class="v" id="s-last">idle</span></div>
+    </div>
+
+    <div class="control-group">
+        <div class="label">Grid bindings</div>
+        <button id="btn-bind">Bind grid (allocate 600 effects)</button>
+        <button id="btn-dispose">Dispose store (release signals)</button>
+    </div>
+
+    <div class="control-group">
+        <div class="label">Mutations</div>
+        <button id="btn-1">Mutate 1 random cell</button>
+        <button id="btn-10">Mutate 10 random cells</button>
+        <button id="btn-all">Mutate ALL 600 cells</button>
+        <button id="btn-auto">Auto-mutate (10/sec)</button>
+    </div>
+
+    <div class="control-group">
+        <div class="label">Refetch (1.1 &middot; reconcile)</div>
+        <button id="btn-reconcile">Refetch: reconcile, 3 changed</button>
+        <button id="btn-replace">Replace: s.cells = fresh (footgun)</button>
+    </div>
+
+    <div class="note">
+        A refetch hands you a <span class="hl">whole new</span> data tree. <code>reconcile(s, next)</code>
+        diffs it in and patches only the changed leaves &mdash; here 3 cells re-run
+        <span class="hl">3</span> effects and the signal pool stays flat. The footgun
+        <code>s.cells = fresh</code> disposes every cell signal and re-fires all
+        <span class="hl">600</span>. Watch <span class="hl">effects last mutation</span>
+        and the alloc/dispose deltas in <span class="hl">last action</span>.
+    </div>
+
+    <div class="note">
+        Each cell's <span class="hl">background-color</span> is bound to one path:
+        <code>s.cells[r][c].hue</code>. Mutating one path re-runs <span class="hl">one</span> effect.
+        Mutating ten re-runs ten. The "effects last mutation" stat is the fine-grained
+        reactivity story made visible.
+    </div>
+
+    <div class="note">
+        Before <span class="hl">Bind grid</span>: zero signals allocated. The store holds 600
+        cells but no reactive observers exist — lazy allocation is the headline performance
+        property.
+    </div>
+</aside>
+
+<main class="grid-pane">
+    <div class="grid" id="grid"></div>
+</main>
+
+<script type="module">
+    import {effect, batch, stats, createRegistry, setDefaultRegistry} from "@zakkster/lite-signal";
+    import {store, dispose, reconcile} from "@zakkster/lite-store";
+
+    // 600 cells × 1 effect each + lite-store internal sigs + the auto-loop's reads
+    // = well under 4096. The headroom is generous to avoid noise during dispose/rebind.
+    setDefaultRegistry(createRegistry({maxNodes: 8192}));
+
+    const ROWS = 20;
+    const COLS = 30;
+    const TOTAL = ROWS * COLS;
+
+    // ── store: nested cells ────────────────────────────────────────────────
+    let s = store({
+        cells: Array.from({length: ROWS}, () =>
+            Array.from({length: COLS}, () => ({hue: Math.floor(Math.random() * 360)}))),
+    });
+
+    // ── DOM grid ───────────────────────────────────────────────────────────
+    const gridEl = document.getElementById("grid");
+    const cellEls = new Array(TOTAL);
+
+    for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+            const d = document.createElement("div");
+            d.className = "cell unbound";
+            cellEls[r * COLS + c] = d;
+            gridEl.appendChild(d);
+        }
+    }
+
+    // ── effect-per-cell bindings ──────────────────────────────────────────
+    let cellStops = [];
+    let runsThisMutation = 0;
+
+    function bindGrid() {
+        if (cellStops.length) return;
+
+        for (let r = 0; r < ROWS; r++) {
+            for (let c = 0; c < COLS; c++) {
+                const el = cellEls[r * COLS + c];
+                const stop = effect(() => {
+                    runsThisMutation++;                                  // count every fire
+                    el.style.setProperty('--h', s.cells[r][c].hue);
+                });
+                cellStops.push(stop);
+                el.classList.remove("unbound");
+            }
+        }
+        // Initial bind fires every cell's effect once — that's the "first allocation".
+        // Reset the per-mutation counter so the UI starts at zero for the next click.
+        runsThisMutation = 0;
+        updateButtons();
+    }
+
+    function unbindAll() {
+        for (const stop of cellStops) stop();
+
+        cellStops = [];
+
+        for (const el of cellEls) el.classList.add("unbound");
+    }
+
+    function disposeStore() {
+        unbindAll();
+        dispose(s);
+        // Re-create a fresh store with new random hues; lazy means signals come back
+        // only when bindGrid() runs.
+        s = store({
+            cells: Array.from({length: ROWS}, () =>
+                Array.from({length: COLS}, () => ({hue: Math.floor(Math.random() * 360)}))),
+        });
+
+        sLast.textContent = "store disposed";
+        sLastRuns.textContent = "0";
+        runsThisMutation = 0;
+
+        updateButtons();
+    }
+
+    // ── mutations (batched, count effects) ────────────────────────────────
+    function mutate(n) {
+        runsThisMutation = 0;
+
+        batch(() => {
+            for (let i = 0; i < n; i++) {
+                const r = (Math.random() * ROWS) | 0;
+                const c = (Math.random() * COLS) | 0;
+                s.cells[r][c].hue = (Math.random() * 360) | 0;
+            }
+        });
+
+        sLast.textContent = `wrote ${n} random cell${n === 1 ? "" : "s"}`;
+        sLastRuns.textContent = String(runsThisMutation);
+    }
+
+    function mutateAll() {
+        runsThisMutation = 0;
+        batch(() => {
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    s.cells[r][c].hue = (Math.random() * 360) | 0;
+                }
+            }
+        });
+        sLast.textContent = `wrote all ${TOTAL} cells`;
+        sLastRuns.textContent = String(runsThisMutation);
+    }
+
+    // ── refetch: reconcile vs the s.cells = fresh footgun (1.1) ───────────
+    function currentPlain() {
+        const cells = new Array(ROWS);
+        for (let r = 0; r < ROWS; r++) {
+            const row = new Array(COLS);
+            for (let c = 0; c < COLS; c++) row[c] = {hue: s.cells[r][c].hue};
+            cells[r] = row;
+        }
+        return {cells};
+    }
+    function scatter(next, n) {
+        for (let i = 0; i < n; i++) {
+            const r = (Math.random() * ROWS) | 0, c = (Math.random() * COLS) | 0;
+            next.cells[r][c].hue = (Math.random() * 360) | 0;
+        }
+    }
+    function refetchReconcile(n) {
+        const next = currentPlain();
+        scatter(next, n);
+        const b = stats();
+        runsThisMutation = 0;
+        reconcile(s, next);                         // structural diff-apply, in place
+        const a = stats();
+        const alloc = a.totalAllocations - b.totalAllocations;
+        const disp = a.totalDisposals - b.totalDisposals;
+        sLast.textContent = `reconcile ${TOTAL} rows, ${n} changed \u2014 ${alloc} alloc / ${disp} dispose`;
+        sLastRuns.textContent = String(runsThisMutation);
+    }
+    function replaceNaive() {
+        const fresh = currentPlain();
+        scatter(fresh, 3);                          // same 3-cell "change"...
+        const b = stats();
+        runsThisMutation = 0;
+        s.cells = fresh.cells;                      // ...but replacing the branch disposes the whole subtree
+        const a = stats();
+        const alloc = a.totalAllocations - b.totalAllocations;
+        const disp = a.totalDisposals - b.totalDisposals;
+        sLast.textContent = `s.cells = fresh \u2014 ${alloc} alloc / ${disp} dispose (footgun)`;
+        sLastRuns.textContent = String(runsThisMutation);
+    }
+
+    // ── controls ──────────────────────────────────────────────────────────
+    const btnBind = document.getElementById("btn-bind");
+    const btnDispose = document.getElementById("btn-dispose");
+    const btn1 = document.getElementById("btn-1");
+    const btn10 = document.getElementById("btn-10");
+    const btnAll = document.getElementById("btn-all");
+    const btnAuto = document.getElementById("btn-auto");
+    const btnReconcile = document.getElementById("btn-reconcile");
+    const btnReplace = document.getElementById("btn-replace");
+    const sCells = document.getElementById("s-cells");
+    const sSignals = document.getElementById("s-signals");
+    const sEffects = document.getElementById("s-effects");
+    const sLastRuns = document.getElementById("s-last-runs");
+    const sLast = document.getElementById("s-last");
+
+    function updateButtons() {
+        const bound = cellStops.length > 0;
+        btnBind.textContent = bound ? "Unbind grid (release effects)" : "Bind grid (allocate 600 effects)";
+        btnBind.classList.toggle("active", bound);
+        btn1.disabled = !bound;
+        btn10.disabled = !bound;
+        btnAll.disabled = !bound;
+        btnAuto.disabled = !bound;
+        btnReconcile.disabled = !bound;
+        btnReplace.disabled = !bound;
+    }
+
+    btnBind.addEventListener("click", () => {
+        if (cellStops.length) unbindAll();
+        else bindGrid();
+        updateButtons();
+    });
+
+    btnDispose.addEventListener("click", disposeStore);
+    btn1.addEventListener("click", () => mutate(1));
+    btn10.addEventListener("click", () => mutate(10));
+    btnAll.addEventListener("click", mutateAll);
+    btnReconcile.addEventListener("click", () => refetchReconcile(3));
+    btnReplace.addEventListener("click", replaceNaive);
+
+    let autoId = null;
+
+    btnAuto.addEventListener("click", () => {
+        if (autoId === null) {
+            autoId = setInterval(() => mutate(1), 100);
+            btnAuto.classList.add("active");
+            btnAuto.textContent = "Auto-mutate (running…)";
+        } else {
+            clearInterval(autoId);
+            autoId = null;
+            btnAuto.classList.remove("active");
+            btnAuto.textContent = "Auto-mutate (10/sec)";
+        }
+    });
+
+    // ── stats loop ───────────────────────────────────────────────────────
+    function tickStats() {
+        const st = stats();
+        sSignals.textContent = String(st.signals);
+        sEffects.textContent = String(st.effects);
+
+        requestAnimationFrame(tickStats);
+    }
+
+    requestAnimationFrame(tickStats);
+
+    updateButtons();
+    sLast.textContent = "click 'Bind grid' to start";
+</script>
+</body>
+</html>
