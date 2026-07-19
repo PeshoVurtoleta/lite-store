@@ -1,6 +1,6 @@
 {
   "name": "@zakkster/lite-store",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": "Zahary Shinikchiev <shinikchiev@yahoo.com>",
   "description": "Fine-grained reactivity for objects and arrays, built on @zakkster/lite-signal. Direct mutation via Proxy; lazy per-key signals (allocated only on first tracked read); proxy identity preserved across reads; safe disposal walk with cycle protection. Four exports: store, unwrap, snapshot, dispose.",
   "type": "module",
@@ -61,10 +61,6 @@
   "bugs": {
     "url": "https://github.com/PeshoVurtoleta/lite-store/issues",
     "email": "shinikchiev@yahoo.com"
-  },
-  "funding": {
-    "type": "github",
-    "url": "https://github.com/sponsors/PeshoVurtoleta"
   },
   "engines": {
     "node": ">=18"

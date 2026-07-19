@@ -236,9 +236,9 @@ The corollary is the **zombie proxy**: if you hold a reference to a subtree and 
 
 Wrap a plain object or array in a reactive store. Returns a Proxy typed as `T`. Mutate it normally; reads inside reactive contexts subscribe at the path level. Throws `TypeError` if `initial` is not a plain object or array.
 
-**Idempotent:** passing an existing store returns it unchanged rather than building a proxy-of-a-proxy (which would give one dataset two metas, two signal sets and two identities).
+**Idempotent** <sub>1.2</sub>**:** passing an existing store returns it unchanged rather than building a proxy-of-a-proxy (which would give one dataset two metas, two signal sets and two identities).
 
-**Frozen subtrees are handed back as-is.** A frozen object's own properties are non-writable and non-configurable, and the proxy `get` invariant then forbids returning a child proxy for them — so frozen data is returned unwrapped and carries no reactivity. It cannot change, so there is nothing to observe; its non-frozen siblings are unaffected.
+**Frozen subtrees are handed back as-is** <sub>1.2</sub>**.** A frozen object's own properties are non-writable and non-configurable, and the proxy `get` invariant then forbids returning a child proxy for them — so frozen data is returned unwrapped and carries no reactivity. It cannot change, so there is nothing to observe; its non-frozen siblings are unaffected.
 
 ### `unwrap<T>(s: T): T`
 
@@ -248,7 +248,7 @@ Return the underlying target object. Reads through `unwrap` are NOT tracked, eve
 
 Return a deep plain-data copy of the store's contents. Recursively unwraps nested proxies and clones their targets. Non-plain prototypes (Date, Map, Set, class instances) are copied by reference, not cloned.
 
-**Cycle-safe.** Self-references, mutual references and diamonds resolve to the corresponding clone instead of recursing forever, so the copy reproduces the original's sharing topology rather than exploding it into a tree.
+**Cycle-safe** <sub>1.2</sub>**.** Self-references, mutual references and diamonds resolve to the corresponding clone instead of recursing forever, so the copy reproduces the original's sharing topology rather than exploding it into a tree.
 
 ### `dispose(s: object): void`
 
@@ -273,8 +273,8 @@ reconcile(s.items, await fetchRows());
 - **Arrays reconcile positionally by default** — index `i` in the store is patched against index `i` in `next`. This is the zero-GC path and covers the dominant case (a refetch that returns the same rows in the same order with a few edited fields).
 - **`opts.key`** — a property name (`{ key: "id" }`) or a function (`{ key: r => r.uid }`) — matches rows **by identity** across reorder, insert and removal, so a moved row keeps its whole signal subtree and only its index signal fires. The key applies to every array reached during the walk.
 - Runs **untracked** (calling it inside an effect never subscribes) and inside one **`batch`** (a multi-field consumer never sees a torn, half-applied snapshot).
-- **Untrusted input is safe by construction.** `next` is a server payload, and `JSON.parse` mints `__proto__` as a real own property — those keys are skipped in both directions, so a hostile refetch never reaches `Object.prototype`.
-- **Duplicate keys keep slots disjoint.** When `opts.key` yields the same key for several rows (an overlapping page, a fanned-out join, a server bug), each existing row is claimed by at most one incoming row, so two slots are never backed by one target.
+- **Untrusted input is safe by construction** <sub>1.2</sub>**.** `next` is a server payload, and `JSON.parse` mints `__proto__` as a real own property — those keys are skipped in both directions, so a hostile refetch never reaches `Object.prototype`.
+- **Duplicate keys keep slots disjoint** <sub>1.2</sub>**.** When `opts.key` yields the same key for several rows (an overlapping page, a fanned-out join, a server bug), each existing row is claimed by at most one incoming row, so two slots are never backed by one target.
 
 It is not `produce` and not a rollback primitive: there is no draft and no throw-to-discard. `reconcile` is strictly "make the store equal this fresh value, cheaply" — a mid-walk throw leaves the partially-applied writes in place, same as any mutable JS. The **honest non-claim**: keyed reconcile builds a transient `Map`/`Set`/scratch array (JS-heap handles the pool counters don't see); positional reconcile of a same-shape refetch allocates nothing on either the pool or the JS heap.
 
@@ -355,7 +355,7 @@ npm test     # node --test test/*.test.js
 | Array ops | `push`, `pop`, `shift`, `unshift`, `splice` (forward/negative/insert-only/empty), `reverse`, `sort`, `fill` — each fires the right subset of tracked indices + length |
 | **Array length** | `arr.length = N` truncation fires removed indices; sparse `arr[100] = x` fires length implicitly |
 | **Array iteration** | `for...of`, `forEach`, `map`, `find` (short-circuits correctly), spread `[...arr]` — all track every visited index |
-| **Object iteration** | `JSON.stringify`, spread `{...s}`, `Object.values` track read keys; `'key' in s` (has trap) tracks **presence**, so a value change does not wake it |
+| **Object iteration** | `JSON.stringify`, spread `{...s}`, `Object.values` track read keys; `'key' in s` (has trap) tracks **presence** <sub>1.2</sub>, so a value change does not wake it |
 | **Multi-store** | Independent stores don't cross-fire; effects/computeds composing two stores re-fire correctly |
 | Dispose | Sibling safety; 500-child cascade; idempotent (double-dispose safe); during-batch; non-store inputs |
 | Zombie proxy | Old effects detached; new effects can re-subscribe to a zombie subtree |

@@ -4,32 +4,12 @@ All notable changes to `@zakkster/lite-store` are documented here. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.0] - 2026-07-18
+## [1.2.0] - 2026-07-18
 
-> Supersedes the unreleased 1.1.0. The version jumped a minor rather than a patch
-> because `in` changed meaning relative to the published 1.0.0 (see **Changed**
-> below), and because `@zakkster/lite-crdt` depends on the pool-accounting fixes
-> here and pins `^1.1.0`.
-
-### Added
-
-- **`reconcile(s, next, opts?)`** — structural diff-apply for wholesale data
-  replacement (a server refetch, `lite-query` integration). Patches `s` in place
-  so its contents deep-equal `next`, mutating only the leaves that actually
-  differ, instead of `s.x = fresh` — which disposes every signal under `s.x` and
-  re-fires every observer of it.
-  - Objects patch keys present in `next` (recursing into same-shape nested
-    objects/arrays so their proxy identity and signals survive) and delete keys
-    absent from it.
-  - Arrays reconcile **positionally by default** (index `i` patched against
-    `next[i]`, each row's target and signals preserved) — the zero-GC path.
-  - **`opts.key`** (a property name like `"id"`, or `(item) => keyValue`) matches
-    rows **by identity** across reorder / insert / removal, so a moved row keeps
-    its whole signal subtree and only its index signal fires. The key applies to
-    every array reached during the walk.
-  - Runs **untracked** (never subscribes) and inside one **`batch`** (a
-    multi-field consumer never observes a torn, half-applied snapshot).
-  - Not `produce` and not a rollback primitive: no draft, no throw-to-discard.
+> A hardening release on top of 1.1.0: no new API, one behaviour change (`in`),
+> and a set of pool-accounting and safety fixes. The version moves a minor rather
+> than a patch because of that behaviour change. `@zakkster/lite-crdt` pins
+> `^1.2.0` because it needs the array shrink-path disposal fix below.
 
 ### Changed
 
@@ -46,8 +26,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
-Found by the adversarial suite below before 1.1.0 shipped. Every entry is a bug
-that passed the original 1.1.0 tests.
+Found by the adversarial suite below. Every entry is a defect present in 1.1.0
+that 1.1.0's own tests passed.
 
 - **Array shrink paths leaked signals.** `pop` / `shift` / `splice` / `fill` /
   `copyWithin` / `length = n` fired the right signals but never disposed the rows
@@ -88,20 +68,12 @@ that passed the original 1.1.0 tests.
 
 ### Verified
 
-- **Gate:** replacing 1000 rows where 3 changed fires exactly 3 effects, with the
-  signal pool flat (0 allocations, 0 disposals) against `lite-signal`'s `stats()`
-  counters. Keyed reorder keeps every row's proxy identity and signal subtree.
-- 19 new tests (`test/Reconcile.test.js`) plus the adversarial regression suite
-  (`test/Torture.test.js`); **129 tests total**, `node --test`.
+- The zero-GC gate above still holds unchanged.
+- The adversarial regression suite (`test/Torture.test.js`) joins the fast suite:
+  **129 tests total**, `node --test`.
 - No read-path cost: `store` read/splice benchmarks are unchanged, and array
   `push` measures ~6% faster from the cached method wrappers (interleaved A/B,
   median of 7).
-
-### Honest non-claim
-
-- Keyed reconcile builds a transient `Map` / `Set` / scratch array (JS-heap
-  handles the pool counters do not see). Positional reconcile of a same-shape
-  refetch allocates nothing on either the pool or the JS heap.
 
 ### Torture
 
@@ -117,6 +89,41 @@ that passed the original 1.1.0 tests.
   same-shape refetch that stays pool-flat, a bounded feed that must return its
   nodes under a hard ceiling, and hostile `__proto__` payloads. Scale with
   `TORTURE_SCALE`. Dev-only; not in `files[]`.
+
+## [1.1.0] - 2026-07-16
+
+### Added
+
+- **`reconcile(s, next, opts?)`** — structural diff-apply for wholesale data
+  replacement (a server refetch, `lite-query` integration). Patches `s` in place
+  so its contents deep-equal `next`, mutating only the leaves that actually
+  differ, instead of `s.x = fresh` — which disposes every signal under `s.x` and
+  re-fires every observer of it.
+  - Objects patch keys present in `next` (recursing into same-shape nested
+    objects/arrays so their proxy identity and signals survive) and delete keys
+    absent from it.
+  - Arrays reconcile **positionally by default** (index `i` patched against
+    `next[i]`, each row's target and signals preserved) — the zero-GC path.
+  - **`opts.key`** (a property name like `"id"`, or `(item) => keyValue`) matches
+    rows **by identity** across reorder / insert / removal, so a moved row keeps
+    its whole signal subtree and only its index signal fires. The key applies to
+    every array reached during the walk.
+  - Runs **untracked** (never subscribes) and inside one **`batch`** (a
+    multi-field consumer never observes a torn, half-applied snapshot).
+  - Not `produce` and not a rollback primitive: no draft, no throw-to-discard.
+
+### Verified
+
+- **Gate:** replacing 1000 rows where 3 changed fires exactly 3 effects, with the
+  signal pool flat (0 allocations, 0 disposals) against `lite-signal`'s `stats()`
+  counters. Keyed reorder keeps every row's proxy identity and signal subtree.
+- 19 new tests (`test/Reconcile.test.js`); 94 tests total, `node --test`.
+
+### Honest non-claim
+
+- Keyed reconcile builds a transient `Map` / `Set` / scratch array (JS-heap
+  handles the pool counters do not see). Positional reconcile of a same-shape
+  refetch allocates nothing on either the pool or the JS heap.
 
 ## [1.0.0] - 2026-06
 

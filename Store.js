@@ -1,5 +1,5 @@
 /**
- * @zakkster/lite-store v1.1.0
+ * @zakkster/lite-store v1.2.0
  * --------------------
  * Fine-grained reactivity for objects and arrays, built on @zakkster/lite-signal.
  *
