@@ -367,23 +367,13 @@ function makeHandler(meta) {
 
             t[k] = real;
 
+            if (!hadKey) fireHas(meta, k, true);
+
             // Fire BEFORE dispose: effects that read the key see the new value
             // and re-run synchronously (or queue under batch). Disposing the
             // old subtree afterwards is safe — its signals are no longer
             // observed by the live effects.
-            //
-            // `hadKey` is unconditionally true until something probes this
-            // object with `in`, so the hot write path stays exactly one fire
-            // and allocates no closure. A key that is genuinely NEW flips both
-            // lanes at once, so those are coalesced into one propagation.
-            if (hadKey) {
-                fireKey(meta, k, real);
-            } else {
-                batch(() => {
-                    fireHas(meta, k, true);
-                    fireKey(meta, k, real);
-                });
-            }
+            fireKey(meta, k, real);
 
             // Sparse-index writes bump length implicitly. The set trap above
             // saw key="100", not key="length", so we have to detect and fire
@@ -411,19 +401,8 @@ function makeHandler(meta) {
             delete t[k];
 
             if (had) {
-                // Both lanes flip on a delete, and one `in` check subscribes to
-                // BOTH — firing them separately re-runs that effect twice for a
-                // single mutation, which breaks the one-write-one-run promise.
-                // The batch is only paid for once the existence lane exists;
-                // a store nobody probes with `in` keeps the old single fire.
-                if (meta.hasSigs === undefined) {
-                    fireKey(meta, k, undefined);
-                } else {
-                    batch(() => {
-                        fireKey(meta, k, undefined);
-                        fireHas(meta, k, false);
-                    });
-                }
+                fireKey(meta, k, undefined);
+                fireHas(meta, k, false);
             }
 
             const oldMeta = isPlain(old) ? metaOf.get(old) : null;
@@ -436,15 +415,15 @@ function makeHandler(meta) {
         },
 
         has(t, k) {
-            // `in` is tracked on two lanes: the value lane (so a value change
-            // re-fires, matching read semantics) and the existence lane (so
-            // adding a key whose value is `undefined`, or deleting a key that
-            // already held `undefined`, still re-fires — the value lane cannot
-            // see either, since Object.is(undefined, undefined) suppresses it).
-            if (typeof k !== "symbol" && isTracking()) {
-                trackKey(meta, k, t[k])();
-                trackHas(meta, k, Reflect.has(t, k))();
-            }
+            // `in` asks a presence question, so it subscribes to the EXISTENCE
+            // lane only. It deliberately does not touch the value lane: a key
+            // going "dark" -> "light" does not change whether it is present, and
+            // waking `in` consumers for it is a spurious re-fire. The dedicated
+            // lane is also what lets `in` see the two flips the value lane is
+            // blind to — adding a key whose value is `undefined`, and deleting a
+            // key that already held `undefined`, both of which Object.is
+            // suppresses on the value lane.
+            if (typeof k !== "symbol" && isTracking()) trackHas(meta, k, Reflect.has(t, k))();
             return Reflect.has(t, k);
         },
     };

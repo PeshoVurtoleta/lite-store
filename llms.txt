@@ -63,11 +63,12 @@ reconcile<T extends object>(s: T, next: T, opts?: { key?: string | ((item)=>unkn
 - Set trap: write target. Fire key's signal if exists (BEFORE dispose). Dispose old value's
   subtree if it was a proxied object (and not us — cycle protection).
 - Delete trap: same as set with undefined.
-- Has trap: tracks TWO lanes -- the value lane (like a read) and an existence lane, so
-  adding a key valued undefined, or deleting a key that held undefined, still re-fires
-  (Object.is(undefined, undefined) makes the value lane blind to both). The two are
-  coalesced into one propagation, so a mutation flipping existence AND value re-runs an
-  `in` consumer exactly once. The existence lane is allocated lazily on first tracked `in`.
+- Has trap: `key in s` subscribes to the EXISTENCE lane ONLY, not the value lane.
+  [CHANGED in 1.2] A value change (dark -> light) does NOT wake an `in` consumer:
+  presence did not change, so waking it was a spurious re-fire. The dedicated lane is
+  also what makes the two flips the value lane is blind to visible -- adding a key valued
+  undefined, and deleting a key that held undefined (Object.is suppresses both there).
+  The lane is allocated lazily on the first tracked `in`; a store nobody probes pays nothing.
 - Array shrink paths (pop/shift/splice/fill/copyWithin/length=n) dispose the signal
   subtrees of the rows they shed, so churn returns its nodes to the pool.
 - Array method wrappers are cached per node: s.push === s.push, no closure per access.

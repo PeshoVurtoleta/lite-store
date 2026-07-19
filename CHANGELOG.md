@@ -4,7 +4,12 @@ All notable changes to `@zakkster/lite-store` are documented here. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.0] - 2026-07-16
+## [1.1.0] - 2026-07-18
+
+> Supersedes the unreleased 1.1.0. The version jumped a minor rather than a patch
+> because `in` changed meaning relative to the published 1.0.0 (see **Changed**
+> below), and because `@zakkster/lite-crdt` depends on the pool-accounting fixes
+> here and pins `^1.1.0`.
 
 ### Added
 
@@ -26,6 +31,19 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     multi-field consumer never observes a torn, half-applied snapshot).
   - Not `produce` and not a rollback primitive: no draft, no throw-to-discard.
 
+### Changed
+
+- **`in` subscribes to presence only, not to value.** Through 1.0.0 the `has`
+  trap tracked the value lane, so `s.theme = "light"` woke every consumer that
+  had only asked `"theme" in s` — a spurious re-fire for a question whose answer
+  did not change. `in` is a presence question and now answers on the presence
+  lane alone. A consumer that wants the value should read the value.
+
+  This is the one behaviour change in this release. It is why the version moved
+  a minor instead of a patch. Downstream, `@zakkster/lite-crdt`'s `map.has(key)`
+  compiles straight to `key in proj` and its suite asserts exactly this
+  fine-grained behaviour.
+
 ### Fixed
 
 Found by the adversarial suite below before 1.1.0 shipped. Every entry is a bug
@@ -36,13 +54,12 @@ that passed the original 1.1.0 tests.
   they shed. Those signals stayed checked out of the pool forever — unreachable
   from the store, so not even `dispose(s)` could reclaim them. A capped feed
   (push one, shed one) bled the pool indefinitely; it now holds a flat ledger.
-- **`in` could not see existence.** Existence is now tracked on its own signal
-  lane, so adding a key whose value is `undefined`, or deleting a key that
-  already held `undefined`, re-fires an `in` consumer — the value lane cannot
-  see either, since `Object.is(undefined, undefined)` suppresses the fire. Both
-  lanes are coalesced into one propagation, so a mutation that flips existence
-  *and* value still re-runs the consumer exactly once. The lane is allocated
-  lazily: a store nobody probes with `in` pays nothing.
+- **`in` could not see existence.** Existence now has its own signal lane, so
+  adding a key whose value is `undefined`, or deleting a key that already held
+  `undefined`, re-fires an `in` consumer — the value lane is blind to both,
+  since `Object.is(undefined, undefined)` suppresses the fire. The lane is
+  allocated lazily: a store nobody probes with `in` pays nothing. See
+  **Changed** for what `in` no longer subscribes to.
 - **Frozen data made a store unreadable.** A frozen target's own properties are
   non-writable and non-configurable, so the proxy `get` invariant forbids
   returning a child proxy — the engine threw. Frozen subtrees are now handed

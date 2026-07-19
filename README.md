@@ -355,7 +355,7 @@ npm test     # node --test test/*.test.js
 | Array ops | `push`, `pop`, `shift`, `unshift`, `splice` (forward/negative/insert-only/empty), `reverse`, `sort`, `fill` — each fires the right subset of tracked indices + length |
 | **Array length** | `arr.length = N` truncation fires removed indices; sparse `arr[100] = x` fires length implicitly |
 | **Array iteration** | `for...of`, `forEach`, `map`, `find` (short-circuits correctly), spread `[...arr]` — all track every visited index |
-| **Object iteration** | `JSON.stringify`, spread `{...s}`, `Object.values`, `'key' in s` (has trap) — all track read keys |
+| **Object iteration** | `JSON.stringify`, spread `{...s}`, `Object.values` track read keys; `'key' in s` (has trap) tracks **presence**, so a value change does not wake it |
 | **Multi-store** | Independent stores don't cross-fire; effects/computeds composing two stores re-fire correctly |
 | Dispose | Sibling safety; 500-child cascade; idempotent (double-dispose safe); during-batch; non-store inputs |
 | Zombie proxy | Old effects detached; new effects can re-subscribe to a zombie subtree |
@@ -363,7 +363,7 @@ npm test     # node --test test/*.test.js
 | Boundaries | Date / Map / Set / class instances opaque; mutating internals doesn't fire |
 | **Error handling** | Effect throws don't break siblings; computed errors cached and clear on dep change; bounded recursion |
 | Utilities | `unwrap` returns target; `snapshot` deep-clones (structurally equal, identity-distinct, non-reactive, cycle-safe) |
-| **Torture** | Adversarial regression suite (`test/Torture.test.js`): every array-shrink path returns its nodes under a fixed-ceiling registry; duplicate-key slot disjointness; `__proto__` payloads inert; snapshot cycles; `store()` idempotency; stable array-method identity; `in` existence lane (exactly one re-run per mutation); ToUint32 `length`; frozen containers |
+| **Torture** | Adversarial regression suite (`test/Torture.test.js`): every array-shrink path returns its nodes under a fixed-ceiling registry; duplicate-key slot disjointness; `__proto__` payloads inert; snapshot cycles; `store()` idempotency; stable array-method identity; `in` subscribes to presence only (value change does not wake it; presence flip wakes it once); ToUint32 `length`; frozen containers |
 
 A clean run prints `# pass 129 / # fail 0`.
 

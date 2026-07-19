@@ -297,35 +297,40 @@ test("`in` re-fires when an undefined-valued key is deleted", () => {
     assert.equal(present, false);
 });
 
-test("`in` still tracks the value lane", () => {
+test("`in` subscribes to presence only, not to value", () => {
+    // BEHAVIOUR CHANGE vs v1.1.0, deliberate. v1.1.0 tracked `in` on the value
+    // lane, so "dark" -> "light" woke every `in` consumer even though presence
+    // never changed. lite-crdt's map.has() compiles straight to `k in proj` and
+    // its suite asserts fine-grained behaviour, so the value lane is a spurious
+    // wake there — and one that double-fires on delete once the existence lane
+    // exists. `in` is a presence question; it answers on the presence lane.
     const s = store({ x: 1 });
     let runs = 0;
     const stop = effect(() => { "x" in s; runs++; });
-    const before = runs;
+    const settled = runs;
     s.x = 2;
+    assert.equal(runs, settled, "value change must not wake an `in` consumer");
+    delete s.x;
     stop();
-    assert.ok(runs > before, "value change no longer re-fires an `in` consumer");
+    assert.equal(runs, settled + 1, "presence flip must wake it exactly once");
 });
 
-test("`in` consumer re-runs exactly ONCE when both lanes flip", () => {
-    // The two-lane fix traded one bug for a subtler one: an `in` check subscribes
-    // to BOTH the value and existence lanes, so a delete of a key that held a
-    // real value flipped both and re-ran the consumer twice — one mutation, two
-    // runs. The sibling tests above assert `runs > before`, which is blind to it;
-    // downstream (@zakkster/lite-crdt's map.has suite) is what caught it. Exact
-    // counts only, and both directions: creation flips both lanes too.
-    const s = store({ theme: "dark" });
-    let runs = 0;
-    const stop = effect(() => { "theme" in s; runs++; });
-    assert.equal(runs, 1, "effect should run once on bind");
+test("`in` sees the flips the value lane is blind to", () => {
+    // The reason the existence lane has to exist at all: Object.is suppresses
+    // undefined -> undefined, so neither of these is visible on the value lane.
+    const add = store({});
+    let addRuns = 0;
+    const stopAdd = effect(() => { "x" in add; addRuns++; });
+    add.x = undefined;                       // absent -> present, value undefined
+    stopAdd();
+    assert.equal(addRuns, 2, "adding an undefined-valued key must re-fire `in`");
 
-    delete s.theme;                       // value dark → undefined AND present → absent
-    assert.equal(runs, 2, "delete of a watched key must re-run the consumer exactly once");
-
-    s.theme = "light";                    // absent → present AND undefined → light
-    assert.equal(runs, 3, "re-creating a watched key must re-run the consumer exactly once");
-
-    stop();
+    const del = store({ x: undefined });
+    let delRuns = 0;
+    const stopDel = effect(() => { "x" in del; delRuns++; });
+    delete del.x;                            // present -> absent, value undefined
+    stopDel();
+    assert.equal(delRuns, 2, "deleting an undefined-valued key must re-fire `in`");
 });
 
 // ───────────────────────────────────────────────────────────────────────────
